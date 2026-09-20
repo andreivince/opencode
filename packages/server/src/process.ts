@@ -16,6 +16,7 @@ import {
   HttpServerRequest,
   HttpServerResponse,
 } from "effect/unstable/http"
+import { NetAddress } from "effect/unstable/net"
 import { createServer } from "node:http"
 import { ServerAuth } from "./auth"
 import { isAllowedCorsOrigin } from "./cors"
@@ -28,7 +29,7 @@ import type { ServerOptions } from "./options"
 
 export interface Lifecycle<E = never, R = never> {
   readonly onListen: (
-    address: HttpServer.Address,
+    address: NetAddress.SocketAddress,
     shutdown: Effect.Effect<void>,
   ) => Effect.Effect<Effect.Effect<void>, E, R>
 }
