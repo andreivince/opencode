@@ -1,17 +1,29 @@
 import { describe, expect } from "bun:test"
+import { Message, ToolCallPart, ToolResultPart } from "@opencode/ai"
 import { OpenAIChat } from "@opencode/ai/protocols"
+import { compileRequest } from "@opencode/ai/route/client"
 import { Agent } from "@opencode/schema/agent"
+import { Document, Info } from "@opencode/schema/config"
+import { Model } from "@opencode/schema/model"
 import { Money } from "@opencode/schema/money"
+import { Provider } from "@opencode/schema/provider"
 import { Session } from "@opencode/schema/session"
 import type { SessionRequestKind } from "@opencode/plugin/effect/session"
+import { Config } from "@opencode/core/config"
+import { ConfigProviderPlugin } from "@opencode/core/config/plugin/provider"
 import { Location } from "@opencode/core/location"
+import { ModelResolver } from "@opencode/core/model-resolver"
+import { Plugin } from "@opencode/core/plugin"
+import { PluginHost } from "@opencode/core/plugin/host"
 import { PluginHooks } from "@opencode/core/plugin/hooks"
 import { Project } from "@opencode/core/project"
 import { AbsolutePath } from "@opencode/core/schema"
 import { SessionModelRequest } from "@opencode/core/session/model-request"
 import { SessionModelTransport } from "@opencode/core/session/model-transport"
 import { SessionRunnerModel } from "@opencode/core/session/runner/model"
-import { DateTime, Effect, Stream } from "effect"
+import { SessionMessage } from "@opencode/core/session/message"
+import { Tool } from "@opencode/core/tool"
+import { DateTime, Effect, Schema, Stream } from "effect"
 import { HttpClientRequest, HttpClientResponse } from "effect/unstable/http"
 import { testEffect } from "./lib/effect"
 import { PluginTestLayer } from "./plugin/fixture"
@@ -37,6 +49,157 @@ const transport = SessionModelTransport.Service.of({
   bind: () => ({ execute: () => Effect.die("unused WebSocket execution") }),
   close: () => Effect.void,
   closeAll: Effect.void,
+})
+
+describe("SessionModelRequest tool capabilities", () => {
+  it.effect("omits tools and tool choice when the configured model cannot call tools", () =>
+    Effect.gen(function* () {
+      const plugins = yield* Plugin.Service
+      const host = yield* PluginHost.make(plugins)
+      yield* ConfigProviderPlugin.Plugin.effect(host).pipe(
+        Effect.provide(
+          Config.testLayer([
+            new Document({
+              type: "document",
+              info: Schema.decodeUnknownSync(Info)({
+                providers: {
+                  custom: {
+                    package: "@opencode/ai/providers/openai/chat",
+                    models: { chat: { capabilities: { tools: false, input: ["text"], output: ["text"] } } },
+                  },
+                },
+              }),
+            }),
+          ]),
+        ),
+      )
+      const resolver = yield* ModelResolver.Service.pipe(Effect.provide(ModelResolver.layer))
+      const selected = yield* resolver.resolve({ providerID: Provider.ID.make("custom"), id: Model.ID.make("chat") })
+      if (!selected) throw new Error("Expected the configured model")
+      const registry = yield* Tool.Service
+      const tools = yield* registry.snapshot()
+      expect(tools.definitions.length).toBeGreaterThan(0)
+      const requests = yield* SessionModelRequest.Service.pipe(Effect.provide(SessionModelRequest.layer))
+
+      for (const kind of KINDS) {
+        const prepared = yield* requests[kind]({
+          session,
+          agent: Agent.ID.make("build"),
+          model: selected,
+          tools,
+          toolChoice: "auto",
+          system: [],
+          messages: [Message.user("Reply with OK")],
+        })
+        const compiled = yield* compileRequest(prepared.request)
+
+        expect(prepared.request.tools).toEqual([])
+        expect(prepared.request.toolChoice).toBeUndefined()
+        expect(compiled.body.tools).toBeUndefined()
+        expect(compiled.body.tool_choice).toBeUndefined()
+      }
+    }).pipe(Effect.provideService(SessionModelTransport.Service, transport)),
+  )
+
+  it.effect("restores tools when switching to a capable model without changing the snapshot", () =>
+    Effect.gen(function* () {
+      const registry = yield* Tool.Service
+      yield* registry.transform((draft) =>
+        draft.add({
+          name: "lookup",
+          description: "Look up a value",
+          options: { codemode: false },
+          input: Schema.Struct({}),
+          execute: () => Effect.succeed({ content: "found" }),
+        }),
+      )
+      const tools = yield* registry.snapshot()
+      const hooks = yield* PluginHooks.Service
+      const seen: string[][] = []
+      yield* hooks.register("session", "context", (event) =>
+        Effect.sync(() => {
+          seen.push(Object.keys(event.tools))
+          event.tools.search = event.tools.lookup ?? { description: "Look up a value", input: { type: "object" } }
+          delete event.tools.lookup
+        }),
+      )
+      const requests = yield* SessionModelRequest.Service.pipe(Effect.provide(SessionModelRequest.layer))
+      const input = {
+        session,
+        agent: Agent.ID.make("build"),
+        tools,
+        system: [],
+        messages: [Message.user("Reply with OK")],
+        toolChoice: "auto" as const,
+      }
+      const disabled = yield* requests.primary({
+        ...input,
+        model: { ...model, capabilities: { ...model.capabilities, tools: false } },
+      })
+      const enabled = yield* requests.primary({ ...input, model })
+      const compiled = yield* compileRequest(enabled.request)
+
+      expect(disabled.request.tools).toEqual([])
+      expect(seen).toEqual([[], ["lookup", "execute"]])
+      expect(enabled.request.tools.map((tool) => tool.name)).toEqual(["execute", "search"])
+      expect(compiled.body.tools).toEqual([
+        expect.objectContaining({ function: expect.objectContaining({ name: "execute" }) }),
+        expect.objectContaining({ function: expect.objectContaining({ name: "search" }) }),
+      ])
+      expect(compiled.body.tool_choice).toBe("auto")
+      expect(tools.definitions.map((tool) => tool.name)).toEqual(["lookup", "execute"])
+
+      const call = {
+        sessionID: session.id,
+        agent: input.agent,
+        messageID: SessionMessage.ID.make("msg_tools"),
+        call: ToolCallPart.make({ id: "call_lookup", name: "search", input: {} }),
+      }
+      expect(yield* disabled.executeTool(call).pipe(Effect.flip)).toBeInstanceOf(Tool.Error)
+      expect((yield* enabled.executeTool(call)).content).toEqual([{ type: "text", text: "found" }])
+    }).pipe(Effect.provideService(SessionModelTransport.Service, transport)),
+  )
+
+  it.effect("preserves tool history when the next model cannot call tools", () =>
+    Effect.gen(function* () {
+      const registry = yield* Tool.Service
+      const tools = yield* registry.snapshot()
+      const requests = yield* SessionModelRequest.Service.pipe(Effect.provide(SessionModelRequest.layer))
+      const messages = [
+        Message.user("Read the file"),
+        Message.assistant(ToolCallPart.make({ id: "call_read", name: "read", input: { path: "file.txt" } })),
+        Message.tool(
+          ToolResultPart.make({ id: "call_read", name: "read", result: { type: "text", value: "contents" } }),
+        ),
+        Message.user("Summarize the result"),
+      ]
+      const prepared = yield* requests.primary({
+        session,
+        agent: Agent.ID.make("build"),
+        model: { ...model, capabilities: { ...model.capabilities, tools: false } },
+        tools,
+        system: [],
+        messages,
+      })
+
+      expect(prepared.request.tools).toEqual([])
+      expect(prepared.request.messages).toEqual(messages)
+      const compiled = yield* compileRequest(prepared.request)
+      expect(compiled.body.tools).toEqual([])
+      expect(compiled.body.tool_choice).toBeUndefined()
+      expect(compiled.body.messages).toMatchObject([
+        { role: "user", content: "Read the file" },
+        {
+          role: "assistant",
+          tool_calls: [
+            { id: "call_read", type: "function", function: { name: "read", arguments: '{"path":"file.txt"}' } },
+          ],
+        },
+        { role: "tool", tool_call_id: "call_read", content: "contents" },
+        { role: "user", content: "Summarize the result" },
+      ])
+    }).pipe(Effect.provideService(SessionModelTransport.Service, transport)),
+  )
 })
 
 describe("SessionModelRequest HTTP hooks", () => {
