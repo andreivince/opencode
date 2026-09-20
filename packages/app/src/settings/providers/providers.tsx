@@ -12,7 +12,7 @@ import { DialogConnectProvider, useProviderConnectController } from "@/providers
 import { SettingsList } from "@/settings/list"
 import "@/settings/settings.css"
 
-type ProviderSource = "env" | "api" | "config" | "custom"
+type ProviderSource = "env" | "api" | "oauth" | "config" | "custom"
 type ProviderItem = ReturnType<ReturnType<typeof useProviders>["connected"]>[number]
 
 const PROVIDER_NOTES = [
@@ -70,7 +70,8 @@ export const SettingsProviders: Component<{
   // environment variables, and a connectionless integration is config-provided.
   const source = (item: ProviderItem): ProviderSource | undefined => {
     const current = integration(item.id)
-    if (current?.connections.some((connection) => connection.type === "credential")) return "api"
+    const credential = current?.connections.find((connection) => connection.type === "credential")
+    if (credential) return credential.credentialType === "key" ? "api" : credential.credentialType
     if (current?.connections.some((connection) => connection.type === "env")) return "env"
     if (current) return "config"
     if (!("source" in item)) return
@@ -83,6 +84,7 @@ export const SettingsProviders: Component<{
     const current = source(item)
     if (current === "env") return language.t("settings.providers.tag.environment")
     if (current === "api") return language.t("provider.connect.method.apiKey")
+    if (current === "oauth") return language.t("settings.providers.tag.oauth")
     if (current === "config") return language.t("settings.providers.tag.config")
     if (current === "custom") return language.t("settings.providers.tag.custom")
     return language.t("settings.providers.tag.other")

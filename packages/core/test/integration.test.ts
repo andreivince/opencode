@@ -557,7 +557,7 @@ describe("Integration", () => {
     }),
   )
 
-  it.effect("projects credential and env connections", () => {
+  it.effect("projects credential types and env connections without secrets", () => {
     const integrationID = Integration.ID.make("acme")
     return Effect.acquireUseRelease(
       Effect.sync(() => {
@@ -592,7 +592,13 @@ describe("Integration", () => {
           const personal = yield* credentials.create({
             integrationID,
             label: "Personal",
-            value: Credential.Key.make({ type: "key", key: "b" }),
+            value: Credential.OAuth.make({
+              type: "oauth",
+              methodID: Integration.MethodID.make("browser"),
+              access: "access-token",
+              refresh: "refresh-token",
+              expires: 1700000000000,
+            }),
           })
 
           // Stored credentials and detected env vars appear as connections.
@@ -601,16 +607,19 @@ describe("Integration", () => {
               type: "credential",
               id: personal.id,
               label: "Personal",
+              credentialType: "oauth",
             },
             {
               type: "credential",
               id: work.id,
               label: "Work",
+              credentialType: "key",
             },
             {
               type: "credential",
               id: archived.id,
               label: "Archived",
+              credentialType: "key",
             },
             { type: "env", name: "INTEGRATION_TEST_ACME_KEY" },
           ])
@@ -618,6 +627,7 @@ describe("Integration", () => {
             type: "credential",
             id: personal.id,
             label: "Personal",
+            credentialType: "oauth",
           })
 
           const bus = yield* Bus.Service
@@ -629,6 +639,7 @@ describe("Integration", () => {
             type: "credential",
             id: work.id,
             label: "Work",
+            credentialType: "key",
           })
           expect((yield* integrations.get(integrationID))?.connections.map((connection) => connection.type)).toEqual([
             "credential",
@@ -651,6 +662,7 @@ describe("Integration", () => {
             type: "credential",
             id: personal.id,
             label: "Personal",
+            credentialType: "oauth",
           })
           yield* integrations.connection.remove(personal.id)
           expect(yield* integrations.connection.active(integrationID)).toEqual({
