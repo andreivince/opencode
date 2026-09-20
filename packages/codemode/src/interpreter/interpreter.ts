@@ -110,20 +110,29 @@ const loopExit = (result: StatementResult, labels: ReadonlySet<string> | undefin
   return undefined
 }
 
-const calleeDescription = (callee: Expression | Super | undefined): string => {
-  if (callee?.type === "Identifier") return callee.name
-  if (callee?.type === "MemberExpression") {
-    const object = callee.object
-    const property = callee.property
-    const key =
-      !callee.computed && property.type === "Identifier"
-        ? property.name
-        : property.type === "Literal" && typeof property.value === "string"
-          ? property.value
-          : undefined
-    if (object.type === "Identifier" && key !== undefined) return `${object.name}.${key}`
+const calleeDescription = (callee: Expression | Super | undefined): string =>
+  describeCallee(callee) ?? "The called value"
+
+// Native engines name the callee (`search(...).catch is not a function`), including call chains.
+const describeCallee = (node: Expression | Super | undefined): string | undefined => {
+  if (node?.type === "Identifier") return node.name
+  if (node?.type === "CallExpression") {
+    const target = describeCallee(node.callee)
+    if (target === undefined) return undefined
+    return `${target}(...)`
   }
-  return "The called value"
+  if (node?.type !== "MemberExpression") return undefined
+  const property = node.property
+  const key =
+    !node.computed && property.type === "Identifier"
+      ? property.name
+      : property.type === "Literal" && typeof property.value === "string"
+        ? property.value
+        : undefined
+  if (key === undefined) return undefined
+  const object = describeCallee(node.object)
+  if (object === undefined) return undefined
+  return `${object}.${key}`
 }
 
 // OrdinaryHasInstance: walk the left operand's chain looking for the constructor's `prototype`.
