@@ -3,13 +3,13 @@ import { Effect } from "effect"
 import { HttpClient, HttpClientResponse } from "effect/unstable/http"
 import { Integration, OpenCode } from "../src/effect/index"
 
-for (const credentialType of ["key", "oauth", undefined]) {
-  test(`integration responses preserve ${credentialType ?? "older"} credential metadata`, async () => {
+for (const method of ["key", "oauth"]) {
+  test(`integration responses preserve ${method} credential metadata`, async () => {
     const connection = {
       type: "credential",
       id: "cred_test",
       label: "Account",
-      ...(credentialType ? { credentialType } : {}),
+      method,
     }
     const httpClient = HttpClient.make((request) =>
       Effect.succeed(

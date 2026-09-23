@@ -605,29 +605,29 @@ describe("Integration", () => {
           expect((yield* integrations.get(integrationID))?.connections).toEqual([
             {
               type: "credential",
+              method: "oauth",
               id: personal.id,
               label: "Personal",
-              credentialType: "oauth",
             },
             {
               type: "credential",
+              method: "key",
               id: work.id,
               label: "Work",
-              credentialType: "key",
             },
             {
               type: "credential",
+              method: "key",
               id: archived.id,
               label: "Archived",
-              credentialType: "key",
             },
             { type: "env", name: "INTEGRATION_TEST_ACME_KEY" },
           ])
           expect(yield* integrations.connection.active(integrationID)).toEqual({
             type: "credential",
+            method: "oauth",
             id: personal.id,
             label: "Personal",
-            credentialType: "oauth",
           })
 
           const bus = yield* Bus.Service
@@ -637,9 +637,9 @@ describe("Integration", () => {
 
           expect(yield* integrations.connection.active(integrationID)).toEqual({
             type: "credential",
+            method: "key",
             id: work.id,
             label: "Work",
-            credentialType: "key",
           })
           expect((yield* integrations.get(integrationID))?.connections.map((connection) => connection.type)).toEqual([
             "credential",
@@ -660,9 +660,9 @@ describe("Integration", () => {
           yield* integrations.connection.remove(work.id)
           expect(yield* integrations.connection.active(integrationID)).toEqual({
             type: "credential",
+            method: "oauth",
             id: personal.id,
             label: "Personal",
-            credentialType: "oauth",
           })
           yield* integrations.connection.remove(personal.id)
           expect(yield* integrations.connection.active(integrationID)).toEqual({

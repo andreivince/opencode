@@ -5,19 +5,13 @@ test.use({ viewport: { width: 1440, height: 900 }, contextOptions: { reducedMoti
 
 test("provider badges describe the active credential type", async ({ page }) => {
   const directory = "/workspace/provider-settings"
-  const oauth = { type: "credential", id: "cred_oauth", label: "Personal", credentialType: "oauth" }
-  const key = { type: "credential", id: "cred_key", label: "Work", credentialType: "key" }
+  const oauth = { type: "credential", id: "cred_oauth", label: "Personal", method: "oauth" }
+  const key = { type: "credential", id: "cred_key", label: "Work", method: "key" }
   const integrations = [
     { id: "openai", name: "OpenAI", methods: [], connections: [oauth, key] },
     { id: "openrouter", name: "OpenRouter", methods: [], connections: [key, oauth] },
     { id: "google", name: "Google", methods: [], connections: [{ type: "env", name: "GOOGLE_API_KEY" }] },
     { id: "anthropic", name: "Anthropic", methods: [], connections: [] },
-    {
-      id: "mistral",
-      name: "Mistral",
-      methods: [],
-      connections: [{ type: "credential", id: "cred_legacy", label: "Legacy" }],
-    },
   ]
   await mockOpenCodeServer(page, {
     directory,
@@ -50,18 +44,17 @@ test("provider badges describe the active credential type", async ({ page }) => 
   const row = (name: string) =>
     providers.locator(".settings-provider-row").filter({ has: page.getByText(name, { exact: true }) })
 
-  await expect(row("OpenAI").getByText("Account (OAuth)", { exact: true })).toBeVisible()
+  await expect(row("OpenAI").getByText("Account", { exact: true })).toBeVisible()
   await expect(row("OpenRouter").getByText("API key", { exact: true })).toBeVisible()
   await expect(row("Google").getByText("Environment", { exact: true })).toBeVisible()
   await expect(row("Anthropic").getByText("Config", { exact: true })).toBeVisible()
-  await expect(row("Mistral").getByText("Other", { exact: true })).toBeVisible()
-  for (const name of ["OpenAI", "OpenRouter", "Mistral"]) {
+  for (const name of ["OpenAI", "OpenRouter"]) {
     await expect(row(name).getByRole("button", { name: "Disconnect", exact: true })).toBeEnabled()
   }
   for (const name of ["Google", "Anthropic"]) {
     await expect(row(name).getByRole("button", { name: "Disconnect", exact: true })).toHaveCount(0)
   }
   await page.setViewportSize({ width: 390, height: 844 })
-  await expect(row("OpenAI").getByText("Account (OAuth)", { exact: true })).toBeVisible()
+  await expect(row("OpenAI").getByText("Account", { exact: true })).toBeVisible()
   await expect(row("OpenAI").getByRole("button", { name: "Disconnect", exact: true })).toBeInViewport()
 })
