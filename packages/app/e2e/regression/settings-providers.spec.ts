@@ -30,12 +30,10 @@ test("provider badges describe the active credential type", async ({ page }) => 
       connected: integrations.map((item) => item.id),
       default: {},
     },
+    integrations,
     sessions: [],
     pageMessages: () => ({ items: [] }),
   })
-  await page.route(/\/api\/integration(?:\?.*)?$/, (route) =>
-    route.fulfill({ json: { location: { directory }, data: integrations } }),
-  )
   await page.goto("/")
   await page.getByRole("button", { name: "Settings", exact: true }).click()
   const settings = page.getByTestId("settings-screen")
