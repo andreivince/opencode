@@ -244,7 +244,7 @@ async function renderToolError(part: SessionMessageAssistantTool, directory: str
   UI.println(UI.Style.TEXT_NORMAL + "✗", UI.Style.TEXT_NORMAL + `${info.title} failed`)
 }
 
-/** @internal Used by the V1 command boundary before a Session exists. */
+/** @internal Used by the V1 and V2 run command boundaries before a Session exists. */
 export function reportRunError(input: Pick<RunCommandInput, "format">, message: string, sessionID?: string) {
   process.exitCode = 1
   if (input.format === "json") {

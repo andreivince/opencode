@@ -228,6 +228,23 @@ describe("mini command", () => {
     }
   })
 
+  test("reports server connection errors with their reason as JSON", async () => {
+    const result = await cli(["--print-logs", "run", "--format", "json", "--server", "http://127.0.0.1:1", "hi"])
+
+    expect(result.exitCode).toBe(1)
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      type: "error",
+      sessionID: "",
+      // The runtime words the reason (a refused connection here), so only require that one follows the summary.
+      error: {
+        type: "unknown",
+        message: expect.stringMatching(/^Could not reach server at http:\/\/127\.0\.0\.1:1: \S/),
+      },
+    })
+    // --print-logs mirrors the CLI log, which must still record the failure.
+    expect(result.stderr).toContain("Could not reach server at http://127.0.0.1:1")
+  })
+
   test("uses the shared V2 server option instead of an attach command", async () => {
     const result = await cli(["mini", "--help"])
 
