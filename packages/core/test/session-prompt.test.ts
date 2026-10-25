@@ -563,6 +563,37 @@ describe("Session.prompt", () => {
     }),
   )
 
+  it.effect("tells BMP and GIF images apart from text that starts with BM or GIF8", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* Session.Service
+      const contents = [
+        Buffer.from("BMI,age\n22.5,31\n"),
+        Buffer.from("GIF8 notes\n"),
+        // 1x1 24-bit BMP: 14-byte file header followed by a 40-byte BITMAPINFOHEADER.
+        Buffer.from(
+          "424d3a0000000000000036000000280000000100000001000000010018000000000004000000130b0000130b00000000000000000000ffffff00",
+          "hex",
+        ),
+        Buffer.from("R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==", "base64"),
+      ]
+
+      const message = yield* session.prompt({
+        sessionID,
+        text: "Inspect these",
+        files: contents.map((bytes) => ({ uri: `data:application/octet-stream;base64,${bytes.toString("base64")}` })),
+        resume: false,
+      })
+
+      expect(message.payload.files?.map((file) => file.mime)).toEqual([
+        "text/plain",
+        "text/plain",
+        "image/bmp",
+        "image/gif",
+      ])
+    }),
+  )
+
   it.effect("rejects malformed base64 data URLs", () =>
     Effect.gen(function* () {
       yield* setup
