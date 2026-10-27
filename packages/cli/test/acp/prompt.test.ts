@@ -281,10 +281,10 @@ describe("acp prompt turns over the wire", () => {
     const file = pathToFileURL(path.join(dir.path, "notes.md")).href
     const folder = pathToFileURL(path.join(dir.path, "src")).href
     const missing = pathToFileURL(path.join(dir.path, "missing.md")).href
-    const image = pathToFileURL(path.join(dir.path, "local.png")).href
+    const image = pathToFileURL(path.join(dir.path, "local #1 100% café.png")).href
     const missingImage = pathToFileURL(path.join(dir.path, "missing.png")).href
     await Bun.write(path.join(dir.path, "notes.md"), "# notes\n")
-    await Bun.write(path.join(dir.path, "local.png"), "png")
+    await Bun.write(path.join(dir.path, "local #1 100% café.png"), "png")
     await mkdir(path.join(dir.path, "src"))
     await using acp = await startSession()
 
@@ -294,7 +294,7 @@ describe("acp prompt turns over the wire", () => {
       { type: "resource_link", uri: file, name: "notes.md" },
       { type: "resource_link", uri: missing, name: "missing.md" },
       { type: "resource_link", uri: folder, name: "src" },
-      { type: "image", data: "", mimeType: "image/png", uri: "https://example.com/remote.png" },
+      { type: "image", data: "", mimeType: "image/png", uri: "https://example.com/project%2Fcover%20image.png" },
       { type: "image", data: "", mimeType: "image/png", uri: image },
       { type: "image", data: "", mimeType: "image/png", uri: missingImage },
       { type: "text", text: "please" },
@@ -312,11 +312,11 @@ describe("acp prompt turns over the wire", () => {
       },
       expect.objectContaining({
         kind: "prompt",
-        text: `compare\n[missing.md](${missing})\n[remote.png](https://example.com/remote.png)\n[missing.png](${missingImage})\nplease`,
+        text: `compare\n[missing.md](${missing})\n[project/cover image.png](https://example.com/project%2Fcover%20image.png)\n[missing.png](${missingImage})\nplease`,
         files: [
           { uri: file, name: "notes.md" },
           { uri: folder, name: "src" },
-          { uri: image, name: "local.png" },
+          { uri: image, name: "local #1 100% café.png" },
         ],
       }),
     ])

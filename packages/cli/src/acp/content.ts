@@ -165,7 +165,10 @@ function filenameFromUri(uri: string | undefined): string | undefined {
   if (!uri || uri.startsWith("data:")) return undefined
   if (URL.canParse(uri)) {
     const url = new URL(uri)
-    return path.basename((url.protocol === "zed:" && url.searchParams.get("path")) || url.pathname) || undefined
+    const pathname = url.protocol === "zed:" && url.searchParams.get("path")
+    if (pathname) return path.basename(pathname) || undefined
+    const filename = path.basename(url.pathname)
+    return Result.try(() => decodeURIComponent(filename)).pipe(Result.getOrElse(() => filename)) || undefined
   }
   return path.basename(uri) || undefined
 }
