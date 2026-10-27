@@ -16,6 +16,8 @@ export type Attached = {
   readonly id: Session.ID
   readonly cwd: string
   readonly selection: Ref.Ref<Selection>
+  readonly revision: { model: number; modeID: number }
+  readonly pending: Set<Change>
 }
 
 export interface Interface {
@@ -79,9 +81,15 @@ export const make = Effect.fnUntraced(function* (input: {
     })
 
   const changed = Effect.fnUntraced(function* (attached: Attached, previous: Catalog, next: Catalog, patch: Selection) {
+    const pending = Array.from(attached.pending)
+    if (patch.model) attached.revision.model++
+    if (patch.modeID) attached.revision.modeID++
     const selection = yield* Ref.getAndUpdate(attached.selection, (current) => ({ ...current, ...patch }))
     const options = configOptions(next, { ...selection, ...patch })
-    if (!isDeepStrictEqual(options, configOptions(previous, selection))) {
+    if (
+      !isDeepStrictEqual(options, configOptions(previous, selection)) &&
+      !pending.some((change) => isDeepStrictEqual(options, configOptions(previous, { ...selection, ...change })))
+    ) {
       yield* input.connection.sessionUpdate({
         sessionId: attached.id,
         update: { sessionUpdate: "config_option_update", configOptions: options },
@@ -129,6 +137,8 @@ export const make = Effect.fnUntraced(function* (input: {
           id: session.id,
           cwd,
           selection: yield* Ref.make<Selection>({ model: session.model, modeID: session.agent }),
+          revision: { model: 0, modeID: 0 },
+          pending: new Set(),
         },
         scope: Scope.forkUnsafe(scope),
         selected: yield* Queue.unbounded<Change>(),
@@ -180,14 +190,24 @@ export const make = Effect.fnUntraced(function* (input: {
       if (entry?.attached !== attached) return yield* new ACPError.SessionNotFoundError({ sessionId: attached.id })
       yield* Effect.forkIn(effect, entry.scope, { startImmediately: true })
     }),
-    // Update selection before switching so the echoed event is a no-op.
     select: Effect.fnUntraced(function* (attached, change) {
-      yield* Ref.update(attached.selection, (selection) => ({ ...selection, ...change }))
+      const key = "model" in change ? "model" : "modeID"
+      const revision = attached.revision[key]
+      attached.pending.add(change)
       yield* (
         "model" in change
           ? input.client.session.switchModel({ sessionID: attached.id, model: change.model })
           : input.client.session.switchAgent({ sessionID: attached.id, agent: change.modeID })
-      ).pipe(Effect.catch(ACPClient.classify))
+      ).pipe(
+        Effect.catch(ACPClient.classify),
+        Effect.andThen(
+          Ref.update(attached.selection, (selection) => {
+            if (attached.revision[key] !== revision) return selection
+            return { ...selection, ...change }
+          }),
+        ),
+        Effect.ensuring(Effect.sync(() => attached.pending.delete(change))),
+      )
     }),
   } satisfies Interface
 })
