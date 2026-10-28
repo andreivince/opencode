@@ -16,7 +16,6 @@ export type Attached = {
   readonly id: Session.ID
   readonly cwd: string
   readonly selection: Ref.Ref<Selection>
-  readonly revision: { model: number; modeID: number }
   readonly pending: Set<Change>
 }
 
@@ -82,8 +81,6 @@ export const make = Effect.fnUntraced(function* (input: {
 
   const changed = Effect.fnUntraced(function* (attached: Attached, previous: Catalog, next: Catalog, patch: Selection) {
     const pending = Array.from(attached.pending)
-    if (patch.model) attached.revision.model++
-    if (patch.modeID) attached.revision.modeID++
     const selection = yield* Ref.getAndUpdate(attached.selection, (current) => ({ ...current, ...patch }))
     const options = configOptions(next, { ...selection, ...patch })
     if (
@@ -137,7 +134,6 @@ export const make = Effect.fnUntraced(function* (input: {
           id: session.id,
           cwd,
           selection: yield* Ref.make<Selection>({ model: session.model, modeID: session.agent }),
-          revision: { model: 0, modeID: 0 },
           pending: new Set(),
         },
         scope: Scope.forkUnsafe(scope),
@@ -191,8 +187,6 @@ export const make = Effect.fnUntraced(function* (input: {
       yield* Effect.forkIn(effect, entry.scope, { startImmediately: true })
     }),
     select: Effect.fnUntraced(function* (attached, change) {
-      const key = "model" in change ? "model" : "modeID"
-      const revision = attached.revision[key]
       attached.pending.add(change)
       yield* (
         "model" in change
@@ -200,12 +194,7 @@ export const make = Effect.fnUntraced(function* (input: {
           : input.client.session.switchAgent({ sessionID: attached.id, agent: change.modeID })
       ).pipe(
         Effect.catch(ACPClient.classify),
-        Effect.andThen(
-          Ref.update(attached.selection, (selection) => {
-            if (attached.revision[key] !== revision) return selection
-            return { ...selection, ...change }
-          }),
-        ),
+        Effect.andThen(Ref.update(attached.selection, (selection) => ({ ...selection, ...change }))),
         Effect.ensuring(Effect.sync(() => attached.pending.delete(change))),
       )
     }),
