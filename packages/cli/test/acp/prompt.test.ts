@@ -312,7 +312,7 @@ describe("acp prompt turns over the wire", () => {
       },
       expect.objectContaining({
         kind: "prompt",
-        text: `compare\n[missing.md](${missing})\n[project/cover image.png](https://example.com/project%2Fcover%20image.png)\n[missing.png](${missingImage})\nplease`,
+        text: `compare\n[missing.md](${missing})\n[cover image.png](https://example.com/project%2Fcover%20image.png)\n[missing.png](${missingImage})\nplease`,
         files: [
           { uri: file, name: "notes.md" },
           { uri: folder, name: "src" },

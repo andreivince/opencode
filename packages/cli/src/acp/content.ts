@@ -168,7 +168,10 @@ function filenameFromUri(uri: string | undefined): string | undefined {
     const pathname = url.protocol === "zed:" && url.searchParams.get("path")
     if (pathname) return path.basename(pathname) || undefined
     const filename = path.basename(url.pathname)
-    return Result.try(() => decodeURIComponent(filename)).pipe(Result.getOrElse(() => filename)) || undefined
+    return (
+      Result.try(() => path.win32.basename(decodeURIComponent(filename))).pipe(Result.getOrElse(() => filename)) ||
+      undefined
+    )
   }
   return path.basename(uri) || undefined
 }
